@@ -5,11 +5,12 @@ import json
 import os
 
 # 1. Загрузка модели YOLO
-model = YOLO("yolov8n.pt")  # nano-версия для скорости
+model = YOLO(r"runs\detect\train2\weights\best.pt")  # nano-версия для скорости
 
 # 2. Получаем ID целевых классов
+print(model.names)
 CLASS_NAMES = model.names
-TARGET_CLASSES = ["person"]  # Укажите нужные классы
+TARGET_CLASSES = ['redbull___33__90162909','snickers_weis__50__5000159461122','snickers___50__5000159461122',]  # Укажите нужные классый
 target_class_ids = [k for k, v in CLASS_NAMES.items() if v in TARGET_CLASSES]
 
 # 3. Подключение к камере

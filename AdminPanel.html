@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель склада</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .out-of-stock {
+            background-color: #ffdddd !important;
+        }
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+        .button.delete {
+            background-color: #f44336;
+        }
+        .button.delete:hover {
+            background-color: #d32f2f;
+        }
+        .button.edit {
+            background-color: #2196F3;
+        }
+        .button.edit:hover {
+            background-color: #0b7dda;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 50%;
+            border-radius: 8px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        .file-input {
+            margin: 20px 0;
+        }
+        .actions {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Админ-панель управления складом</h1>
+        
+        <div class="actions">
+            <button id="addItem" class="button">Добавить товар</button>
+            <div>
+                <input type="file" id="fileInput" class="file-input" accept=".csv">
+                <button id="importBtn" class="button">Импорт CSV</button>
+                <button id="exportBtn" class="button">Экспорт CSV</button>
+            </div>
+        </div>
+        
+        <table id="inventoryTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Наименование</th>
+                    <th>Количество</th>
+                    <th>Ед. измерения</th>
+                    <th>Место хранения</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- Данные будут загружены здесь -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Модальное окно для добавления/редактирования товара -->
+    <div id="itemModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">Добавить товар</h2>
+            <form id="itemForm">
+                <input type="hidden" id="itemId">
+                <div class="form-group">
+                    <label for="itemName">Наименование:</label>
+                    <input type="text" id="itemName" required>
+                </div>
+                <div class="form-group">
+                    <label for="itemQuantity">Количество:</label>
+                    <input type="number" id="itemQuantity" required min="0" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="itemUnit">Ед. измерения:</label>
+                    <input type="text" id="itemUnit" required>
+                </div>
+                <div class="form-group">
+                    <label for="itemLocation">Место хранения:</label>
+                    <input type="text" id="itemLocation" required>
+                </div>
+                <button type="submit" class="button">Сохранить</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Данные инвентаря
+        let inventoryData = [];
+        let currentId = 1;
+
+        // DOM элементы
+        const tableBody = document.getElementById('tableBody');
+        const addItemBtn = document.getElementById('addItem');
+        const itemModal = document.getElementById('itemModal');
+        const closeBtn = document.querySelector('.close');
+        const itemForm = document.getElementById('itemForm');
+        const modalTitle = document.getElementById('modalTitle');
+        const importBtn = document.getElementById('importBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const fileInput = document.getElementById('fileInput');
+
+        // Открытие модального окна для добавления товара
+        addItemBtn.addEventListener('click', () => {
+            modalTitle.textContent = 'Добавить товар';
+            itemForm.reset();
+            document.getElementById('itemId').value = '';
+            itemModal.style.display = 'block';
+        });
+
+        // Закрытие модального окна
+        closeBtn.addEventListener('click', () => {
+            itemModal.style.display = 'none';
+        });
+
+        // Закрытие модального окна при клике вне его
+        window.addEventListener('click', (event) => {
+            if (event.target === itemModal) {
+                itemModal.style.display = 'none';
+            }
+        });
+
+        // Обработка отправки формы
+        itemForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const id = document.getElementById('itemId').value;
+            const name = document.getElementById('itemName').value;
+            const quantity = parseFloat(document.getElementById('itemQuantity').value);
+            const unit = document.getElementById('itemUnit').value;
+            const location = document.getElementById('itemLocation').value;
+            
+            if (id) {
+                // Редактирование существующего товара
+                const index = inventoryData.findIndex(item => item.id == id);
+                if (index !== -1) {
+                    inventoryData[index] = { id, name, quantity, unit, location };
+                }
+            } else {
+                // Добавление нового товара
+                const newId = currentId++;
+                inventoryData.push({ id: newId, name, quantity, unit, location });
+            }
+            
+            renderTable();
+            itemModal.style.display = 'none';
+        });
+
+        // Функция для редактирования товара
+        function editItem(id) {
+            const item = inventoryData.find(item => item.id == id);
+            if (item) {
+                modalTitle.textContent = 'Редактировать товар';
+                document.getElementById('itemId').value = item.id;
+                document.getElementById('itemName').value = item.name;
+                document.getElementById('itemQuantity').value = item.quantity;
+                document.getElementById('itemUnit').value = item.unit;
+                document.getElementById('itemLocation').value = item.location;
+                itemModal.style.display = 'block';
+            }
+        }
+
+        // Функция для удаления товара
+        function deleteItem(id) {
+            if (confirm('Вы уверены, что хотите удалить этот товар?')) {
+                inventoryData = inventoryData.filter(item => item.id != id);
+                renderTable();
+            }
+        }
+
+        // Функция для отрисовки таблицы
+        function renderTable() {
+            tableBody.innerHTML = '';
+            
+            inventoryData.forEach(item => {
+                const row = document.createElement('tr');
+                if (item.quantity <= 0) {
+                    row.classList.add('out-of-stock');
+                }
+                
+                row.innerHTML = `
+                    <td>${item.id}</td>
+                    <td>${item.name}</td>
+                    <td>${item.quantity}</td>
+                    <td>${item.unit}</td>
+                    <td>${item.location}</td>
+                    <td>
+                        <button onclick="editItem(${item.id})" class="button edit">Изменить</button>
+                        <button onclick="deleteItem(${item.id})" class="button delete">Удалить</button>
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Импорт данных из CSV с учетом кодировки UTF-8
+        importBtn.addEventListener('click', () => {
+            if (fileInput.files.length === 0) {
+                alert('Пожалуйста, выберите файл CSV');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            
+            // Указываем кодировку UTF-8 при чтении файла
+            reader.readAsText(file, 'UTF-8');
+            
+            reader.onload = function(e) {
+                try {
+                    const contents = e.target.result;
+                    // Удаляем BOM (Byte Order Mark) если он есть
+                    const bomRemoved = contents.replace(/^\uFEFF/, '');
+                    const lines = bomRemoved.split(/\r?\n/);
+                    
+                    if (lines.length < 2) {
+                        alert('CSV файл пуст или содержит только заголовки');
+                        return;
+                    }
+                    
+                    // Определяем заголовки (первая строка)
+                    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+                    
+                    // Проверяем, есть ли нужные заголовки
+                    const requiredHeaders = ['наименование', 'количество', 'ед. измерения', 'место хранения'];
+                    const hasAllHeaders = requiredHeaders.every(h => 
+                        headers.includes(h.toLowerCase())
+                    );
+                    
+                    if (!hasAllHeaders) {
+                        alert('CSV файл должен содержать заголовки: Наименование, Количество, Ед. измерения, Место хранения');
+                        return;
+                    }
+                    
+                    // Очищаем предыдущие данные
+                    inventoryData = [];
+                    currentId = 1;
+                    
+                    // Парсим данные
+                    const newData = [];
+                    let maxId = currentId;
+                    
+                    for (let i = 1; i < lines.length; i++) {
+                        if (lines[i].trim() === '') continue;
+                        
+                        // Разбиваем строку с учетом возможных запятых в значениях
+                        const values = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+                        const item = {};
+                        
+                        for (let j = 0; j < headers.length; j++) {
+                            const header = headers[j];
+                            if (j < values.length) {
+                                // Удаляем кавычки если они есть
+                                let value = values[j].replace(/^"|"$/g, '').trim();
+                                
+                                // Сопоставляем заголовки с полями
+                                if (header.includes('наименование')) item.name = value;
+                                else if (header.includes('количество')) item.quantity = parseFloat(value.replace(',', '.')) || 0;
+                                else if (header.includes('ед.')) item.unit = value;
+                                else if (header.includes('место')) item.location = value;
+                            }
+                        }
+                        
+                        if (item.name && item.unit && item.location !== undefined) {
+                            const id = maxId++;
+                            newData.push({
+                                id,
+                                name: item.name,
+                                quantity: item.quantity,
+                                unit: item.unit,
+                                location: item.location
+                            });
+                        }
+                    }
+                    
+                    if (newData.length > 0) {
+                        inventoryData = newData;
+                        currentId = maxId;
+                        renderTable();
+                        alert(`Успешно импортировано ${newData.length} товаров`);
+                    } else {
+                        alert('Не удалось импортировать данные из CSV файла');
+                    }
+                } catch (error) {
+                    console.error('Ошибка при обработке CSV файла:', error);
+                    alert('Произошла ошибка при обработке CSV файла. Проверьте формат файла.');
+                }
+            };
+            
+            reader.onerror = function() {
+                alert('Ошибка при чтении файла. Убедитесь, что файл сохранен в кодировке UTF-8.');
+            };
+        });
+
+        // Экспорт данных в CSV с кодировкой UTF-8 и BOM
+        exportBtn.addEventListener('click', () => {
+            if (inventoryData.length === 0) {
+                alert('Нет данных для экспорта');
+                return;
+            }
+            
+            // Добавляем BOM для корректного отображения кириллицы в Excel
+            let csv = '\uFEFF';
+            csv += 'ID,Наименование,Количество,Ед. измерения,Место хранения\n';
+            
+            inventoryData.forEach(item => {
+                // Экранируем значения, которые могут содержать запятые
+                const name = item.name.includes(',') ? `"${item.name}"` : item.name;
+                const unit = item.unit.includes(',') ? `"${item.unit}"` : item.unit;
+                const location = item.location.includes(',') ? `"${item.location}"` : item.location;
+                
+                csv += `${item.id},${name},${item.quantity},${unit},${location}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `склад_${new Date().toISOString().slice(0,10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        // Инициализация с тестовыми данными
+        function initTestData() {
+            inventoryData = [
+                { id: 1, name: 'Гвозди', quantity: 1500, unit: 'шт', location: 'Секция A1' },
+                { id: 2, name: 'Доски', quantity: 45, unit: 'шт', location: 'Секция B2' },
+                { id: 3, name: 'Краска белая', quantity: 12, unit: 'банки', location: 'Секция C3' },
+                { id: 4, name: 'Шурупы', quantity: 0, unit: 'шт', location: 'Секция A2' },
+                { id: 5, name: 'Плитка керамическая', quantity: 25, unit: 'упаковки', location: 'Секция D1' }
+            ];
+            currentId = 6;
+            renderTable();
+        }
+
+        // Запуск приложения
+        initTestData();
+    </script>
+</body>
+</html>
