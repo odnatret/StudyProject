@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мониторинг склада</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .out-of-stock {
+            background-color: #ffdddd !important;
+        }
+        .actions {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+        .refresh-btn {
+            background-color: #2196F3;
+        }
+        .refresh-btn:hover {
+            background-color: #0b7dda;
+        }
+        .timestamp {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .path-input {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-width: 300px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 50%;
+            border-radius: 8px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Мониторинг товаров на складе</h1>
+        
+        <div class="actions">
+            <div class="timestamp">Последнее обновление: <span id="lastUpdate">не обновлялось</span></div>
+            <div style="display: flex; gap: 10px; flex-grow: 1; max-width: 600px;">
+                <input type="text" id="csvPath" class="path-input" placeholder="Введите путь к CSV файлу">
+                <button id="savePathBtn" class="button">Сохранить путь</button>
+                <button id="refreshBtn" class="button refresh-btn">Обновить данные</button>
+            </div>
+        </div>
+        
+        <table id="inventoryTable">
+            <thead>
+                <tr>
+                    <th>Время</th>
+                    <th>Наименование</th>
+                    <th>Кол-во</th>
+                    <th>Ед. измерения (в шт.)</th>
+                    <th>Место хранения</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- Данные будут загружены здесь -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Модальное окно для ошибок -->
+    <div id="errorModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Ошибка</h2>
+            <p id="errorMessage"></p>
+        </div>
+    </div>
+
+    <script>
+        // DOM элементы
+        const tableBody = document.getElementById('tableBody');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const lastUpdateSpan = document.getElementById('lastUpdate');
+        const csvPathInput = document.getElementById('csvPath');
+        const savePathBtn = document.getElementById('savePathBtn');
+        const errorModal = document.getElementById('errorModal');
+        const errorMessage = document.getElementById('errorMessage');
+        const modalClose = document.querySelector('.close');
+
+        // Ключ для localStorage
+        const CSV_PATH_KEY = 'csv_file_path';
+
+        // Загрузка сохранённого пути при старте
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedPath = localStorage.getItem(CSV_PATH_KEY);
+            if (savedPath) {
+                csvPathInput.value = savedPath;
+                // Автоматическая загрузка данных если путь сохранён
+                setTimeout(refreshData, 500);
+            }
+        });
+
+        // Сохранение пути к CSV файлу
+        savePathBtn.addEventListener('click', () => {
+            const path = csvPathInput.value.trim();
+            if (path) {
+                localStorage.setItem(CSV_PATH_KEY, path);
+                showMessage('Путь успешно сохранён');
+                refreshData();
+            } else {
+                showError('Пожалуйста, введите путь к файлу');
+            }
+        });
+
+        // Закрытие модального окна
+        modalClose.addEventListener('click', () => {
+            errorModal.style.display = 'none';
+        });
+
+        // Функция для отображения сообщения об ошибке
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorModal.style.display = 'block';
+        }
+
+        // Функция для отображения сообщения
+        function showMessage(message) {
+            alert(message); // В реальном приложении можно использовать красивый toast
+        }
+
+        // Функция для форматирования даты
+        function formatDateTime(date) {
+            return date.toLocaleString('ru-RU');
+        }
+
+        // Функция для загрузки данных из CSV файла
+        async function loadCSVData(filePath) {
+            try {
+                const response = await fetch(filePath);
+                if (!response.ok) {
+                    throw new Error(`Ошибка загрузки файла: ${response.status}`);
+                }
+                
+                const csvData = await response.text();
+                // Удаляем BOM если он есть
+                const bomRemoved = csvData.replace(/^\uFEFF/, '');
+                const lines = bomRemoved.split(/\r?\n/);
+                
+                if (lines.length < 2) {
+                    throw new Error('CSV файл пуст или содержит только заголовки');
+                }
+                
+                // Определяем заголовки (первая строка)
+                const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+                
+                // Проверяем необходимые заголовки
+                const requiredHeaders = ['время', 'наименование', 'кол-во', 'ед. измерения', 'место хранения'];
+                const hasAllHeaders = requiredHeaders.every(h => 
+                    headers.some(header => header.includes(h.toLowerCase()))
+                );
+                
+                if (!hasAllHeaders) {
+                    throw new Error('CSV файл должен содержать заголовки: Время, Наименование, Кол-во, Ед. измерения, Место хранения');
+                }
+                
+                // Парсим данные
+                const data = [];
+                for (let i = 1; i < lines.length; i++) {
+                    if (lines[i].trim() === '') continue;
+                    
+                    const values = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+                    const item = {};
+                    
+                    for (let j = 0; j < headers.length; j++) {
+                        if (j >= values.length) continue;
+                        
+                        const header = headers[j];
+                        let value = values[j].replace(/^"|"$/g, '').trim();
+                        
+                        if (header.includes('время')) {
+                            item.timestamp = new Date(value);
+                        } else if (header.includes('наименование')) {
+                            item.name = value;
+                        } else if (header.includes('кол-во')) {
+                            item.quantity = parseInt(value) || 0;
+                        } else if (header.includes('ед.')) {
+                            item.unit = value || 'шт.';
+                        } else if (header.includes('место')) {
+                            item.location = value;
+                        }
+                    }
+                    
+                    if (item.name && !isNaN(item.timestamp)) {
+                        data.push(item);
+                    }
+                }
+                
+                return data;
+            } catch (error) {
+                console.error('Ошибка при загрузке CSV:', error);
+                throw error;
+            }
+        }
+
+        // Функция для отрисовки таблицы
+        function renderTable(data) {
+            tableBody.innerHTML = '';
+            
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                if (item.quantity <= 0) {
+                    row.classList.add('out-of-stock');
+                }
+                
+                row.innerHTML = `
+                    <td>${formatDateTime(item.timestamp)}</td>
+                    <td>${item.name}</td>
+                    <td>${item.quantity}</td>
+                    <td>${item.unit}</td>
+                    <td>${item.location}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+            
+            // Обновляем время последнего обновления
+            lastUpdateSpan.textContent = formatDateTime(new Date());
+        }
+
+        // Функция для обновления данных
+        async function refreshData() {
+            const filePath = csvPathInput.value.trim();
+            if (!filePath) {
+                showError('Пожалуйста, введите путь к CSV файлу');
+                return;
+            }
+            
+            try {
+                const data = await loadCSVData(filePath);
+                if (data.length === 0) {
+                    showMessage('Файл загружен, но не содержит данных');
+                }
+                renderTable(data);
+            } catch (error) {
+                showError(`Ошибка: ${error.message}`);
+            }
+        }
+
+        // Обработчик кнопки обновления
+        refreshBtn.addEventListener('click', refreshData);
+    </script>
+</body>
+</html>

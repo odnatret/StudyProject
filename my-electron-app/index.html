@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Учёт позиций на складе</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Учёт позиций на складе</h1>
+    
+    <div class="controls">
+      <button id="load-csv">Загрузить CSV</button>
+      <button id="refresh">Обновить данные</button>
+      <div class="status">
+        Последнее обновление: <span id="last-update">никогда</span>
+        | Автообновление: <span id="auto-refresh-status">включено</span>
+      </div>
+    </div>
+    
+    <div class="table-container">
+      <table id="stock-table">
+        <thead>
+          <tr>
+            <th>Время</th>
+            <th>Наименование</th>
+            <th>Кол-во</th>
+            <th>Ед. измерения</th>
+            <th>Место хранения</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Данные будут загружены здесь -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+  <audio id="notification-sound" preload="auto">
+    <source src="https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3" type="audio/mpeg">
+  </audio>
+</body>
+</html>

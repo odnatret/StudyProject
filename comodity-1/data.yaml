@@ -121,6 +121,6 @@ roboflow:
   url: https://universe.roboflow.com/school-qqqed/comodity/dataset/1
   version: 1
   workspace: school-qqqed
-test: ../test/images
-train: ../train/images
-val: ../valid/images
+test: comodity-1\test
+train: comodity-1\train
+val: comodity-1\valid

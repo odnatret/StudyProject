@@ -1,29 +1,39 @@
 import cv2
 from ultralytics import YOLO
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
+import csv
 import os
 
 # 1. Загрузка модели YOLO
-model = YOLO(r"runs\detect\train2\weights\best.pt")  # nano-версия для скорости
+model = YOLO(r"runs\detect\train2\weights\best.pt")
 
 # 2. Получаем ID целевых классов
 print(model.names)
 CLASS_NAMES = model.names
-TARGET_CLASSES = ['redbull___33__90162909','snickers_weis__50__5000159461122','snickers___50__5000159461122',]  # Укажите нужные классый
+TARGET_CLASSES = ['redbull___33__90162909']
 target_class_ids = [k for k, v in CLASS_NAMES.items() if v in TARGET_CLASSES]
 
+cv2.namedWindow("Inventory Tracking", cv2.WINDOW_NORMAL)
+cv2.resizeWindow("Inventory Tracking", 800, 600)  # Ширина, высота
+
 # 3. Подключение к камере
-cap = cv2.VideoCapture(0)  # 0 - встроенная камера
+cap = cv2.VideoCapture(1)
 
-# 4. Настройка логгирования
-LOG_FILE = "cargo_log.json"
-log_data = []
-last_log_time = datetime.now()
+# 4. Настройка логгирования в CSV
+CSV_FILE = "my-electron-app\inventory.csv"
+CSV_HEADERS = ["Время", "Наименование", "Кол-во", "Ед. измерения", "Место хранения"]
 
-if os.path.exists(LOG_FILE):
-    with open(LOG_FILE, "r") as f:
-        log_data = json.load(f)
+# Место хранения
+STORAGE_LOCATION = "Склад 1"
+
+# Создаем файл с заголовками
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, mode='w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f, delimiter=',')
+        writer.writerow(CSV_HEADERS)
+
+# Для хранения последних обнаруженных объектов
+last_detections = {class_name: 0 for class_name in TARGET_CLASSES}
 
 try:
     while cap.isOpened():
@@ -33,49 +43,54 @@ try:
 
         current_time = datetime.now()
         
-        # 5. Детекция объектов (в каждом кадре)
+        # 5. Детекция объектов
         results = model.predict(frame, classes=target_class_ids)
-
-        # 6. Визуализация (в каждом кадре)
-        frame_entries = []
+        
+        # 6. Инициализация текущих детекций с нулями
+        current_detections = {class_name: 0 for class_name in TARGET_CLASSES}
+        
+        # Обработка результатов детекции
         for result in results:
             for box in result.boxes:
-                # Подготовка данных для лога
-                entry = {
-                    "timestamp": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "class": model.names[int(box.cls[0])],
-                    "confidence": float(box.conf[0]),
-                    "coordinates": {
-                        "x1": int(box.xyxy[0][0]),
-                        "y1": int(box.xyxy[0][1]),
-                        "x2": int(box.xyxy[0][2]),
-                        "y2": int(box.xyxy[0][3])
-                    }
-                }
-                frame_entries.append(entry)
-
-                # Отрисовка bounding box (всегда)
-                x1, y1, x2, y2 = entry["coordinates"].values()
+                class_name = model.names[int(box.cls[0])]
+                if class_name in current_detections:
+                    current_detections[class_name] += 1
+                
+                # Визуализация
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(frame, 
-                           f"{entry['class']} {entry['confidence']:.2f}",
-                           (x1, y1-10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                          f"{class_name} {float(box.conf[0]):.2f}",
+                          (x1, y1-10),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-        # 7. Логгирование раз в 15 секунд
-        if (current_time - last_log_time).total_seconds() >= 15:
-            if frame_entries:
-                log_data.append({
-                    "log_time": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "detections": frame_entries
-                })
-                with open(LOG_FILE, "w") as f:
-                    json.dump(log_data, f, indent=2)
-                print(f"Logged at {current_time}")
-                last_log_time = current_time
-
-        # 8. Показ кадра с bounding boxes
-        cv2.imshow("Cargo Tracking", frame)
+        # 7. Обновление данных в CSV при изменении количества объектов
+        if current_detections != last_detections:
+            last_detections = current_detections.copy()
+            
+            # Подготовка данных для записи
+            rows = []
+            for item, count in current_detections.items():
+                rows.append([
+                    current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    item,
+                    str(count),
+                    "шт.",
+                    STORAGE_LOCATION
+                ])
+            
+            # Записываем с правильной кодировкой
+            with open(CSV_FILE, mode='w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f, delimiter=',')
+                writer.writerow(CSV_HEADERS)
+                writer.writerows(rows)
+            
+            print(f"Обновление инвентаризации в {current_time}:")
+            for item, count in current_detections.items():
+                print(f"  {item}: {count} шт.")
+        
+        # 8. Показ кадра
+        cv2.imshow("Inventory Tracking", frame)
         if cv2.waitKey(1) == ord('q'):
             break
 
