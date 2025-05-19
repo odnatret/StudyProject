@@ -93,7 +93,6 @@ try:
         cv2.imshow("Inventory Tracking", frame)
         if cv2.waitKey(1) == ord('q'):
             break
-
 finally:
     cap.release()
     cv2.destroyAllWindows()
